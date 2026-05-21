@@ -848,7 +848,10 @@ function createNewSession() {
     const cityGrid = document.getElementById('cityGrid');
     cityGrid.innerHTML = '';
 
-    availableCities.forEach(city => {
+    // Sort cities alphabetically
+    const sortedCities = [...availableCities].sort((a, b) => a.localeCompare(b));
+
+    sortedCities.forEach(city => {
         const card = document.createElement('div');
         card.className = 'city-card';
         card.textContent = city;
