@@ -136,6 +136,23 @@ h1 { font-size: 4.5rem; margin: 0; line-height: 1; }
   background: linear-gradient(135deg, #FFC700, #FF8C00);
 }
 
+.session-card.rejoin-session {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+  border: 3px solid #FFD700;
+}
+
+.session-card.rejoin-session:hover {
+  background: linear-gradient(135deg, #45a049, #3d8b40);
+  box-shadow: 0 8px 25px rgba(76, 175, 80, 0.5);
+}
+
+.session-card.rejoin-session .session-name,
+.session-card.rejoin-session .session-city,
+.session-card.rejoin-session .session-players {
+  color: white;
+}
+
 .session-icon {
   font-size: 3rem;
   margin-bottom: 10px;
@@ -715,12 +732,21 @@ function loadActiveSessions() {
         const sessions = snapshot.val();
         gridEl.innerHTML = '';
 
-        // Always show "Create New Session" card first
+        // Check if user has a saved session
+        const savedSession = loadSessionFromStorage();
+
+        // If saved session exists and is still active, show "Rejoin" card first
+        if (savedSession && sessions && sessions[savedSession.sessionCode]) {
+            const rejoinCard = createRejoinCard(savedSession);
+            gridEl.appendChild(rejoinCard);
+        }
+
+        // Always show "Create New Session" card
         const createCard = createNewSessionCard();
         gridEl.appendChild(createCard);
 
         if (!sessions) {
-            return; // Only show create card
+            return; // Only show create/rejoin cards
         }
 
         // Display existing sessions
@@ -748,6 +774,45 @@ function loadActiveSessions() {
             gridEl.appendChild(card);
         });
     });
+}
+
+// Load session from localStorage
+function loadSessionFromStorage() {
+    const saved = localStorage.getItem('pingo_session');
+    if (saved) {
+        try {
+            const data = JSON.parse(saved);
+            // Session expires after 24 hours
+            if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+                return data;
+            } else {
+                localStorage.removeItem('pingo_session');
+            }
+        } catch (e) {
+            console.error('Error loading saved session:', e);
+            localStorage.removeItem('pingo_session');
+        }
+    }
+    return null;
+}
+
+// Create "Rejoin Last Session" card
+function createRejoinCard(savedSession) {
+    const card = document.createElement('div');
+    card.className = 'session-card rejoin-session';
+    card.innerHTML = `
+        <div class="session-icon">🔄</div>
+        <div class="session-name">Rejoin: ${savedSession.sessionName}</div>
+        <div class="session-city">${savedSession.cityName}</div>
+        <div class="session-players">Continue as ${savedSession.playerName}</div>
+    `;
+    card.onclick = () => rejoinLastSession(savedSession);
+    return card;
+}
+
+// Rejoin last session
+function rejoinLastSession(savedSession) {
+    window.location.href = `pingo-multiplayer.html?city=${savedSession.cityName}&session=${savedSession.sessionCode}&playerName=${encodeURIComponent(savedSession.playerName)}&userId=${savedSession.userId}`;
 }
 
 // Create "Create New Session" card
