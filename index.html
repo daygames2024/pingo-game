@@ -279,6 +279,123 @@ h1 { font-size: 4.5rem; margin: 0; line-height: 1; }
   transform: translateY(-2px);
 }
 
+/* City Selection Modal */
+.city-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.city-modal.active {
+  display: flex;
+}
+
+.city-content {
+  background: white;
+  color: #003087;
+  padding: 30px;
+  border-radius: 20px;
+  max-width: 800px;
+  width: 90%;
+  margin: 20px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.city-content h2 {
+  color: #003087;
+  margin-bottom: 20px;
+  font-size: 2rem;
+  text-align: center;
+}
+
+.city-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.city-card {
+  background: linear-gradient(135deg, #003087, #0047b3);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 3px solid transparent;
+  font-weight: bold;
+}
+
+.city-card:hover {
+  background: linear-gradient(135deg, #0047b3, #003087);
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(255, 215, 0, 0.5);
+  border-color: #FFD700;
+}
+
+.city-card.selected {
+  background: linear-gradient(135deg, #FFD700, #FFA500);
+  color: #003087;
+  border-color: #003087;
+}
+
+.city-modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.btn-cancel {
+  padding: 12px 30px;
+  background: #999;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-cancel:hover {
+  background: #777;
+  transform: translateY(-2px);
+}
+
+.btn-continue {
+  padding: 12px 30px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-continue:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+}
+
+.btn-continue:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Share Modal */
 .share-modal {
   display: none;
@@ -499,6 +616,21 @@ h1 { font-size: 4.5rem; margin: 0; line-height: 1; }
   </div>
 </div>
 
+<!-- City Selection Modal -->
+<div id="cityModal" class="city-modal">
+  <div class="city-content">
+    <h2>🌍 Select a City/Theme</h2>
+    <p style="text-align: center; margin-bottom: 20px; opacity: 0.7;">Choose a theme for your PINGO game</p>
+    <div id="cityGrid" class="city-grid">
+      <!-- Cities will be populated here -->
+    </div>
+    <div class="city-modal-buttons">
+      <button class="btn-cancel" onclick="closeCityModal()">Cancel</button>
+      <button class="btn-continue" id="cityConfirmBtn" onclick="confirmCitySelection()" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Share Session Modal -->
 <div id="shareModal" class="share-modal">
   <div class="share-content">
@@ -520,6 +652,7 @@ h1 { font-size: 4.5rem; margin: 0; line-height: 1; }
 <script>
 let db;
 let availableCities = [];
+let selectedCity = null;
 
 // List of all possible game folders to check
 const allGames = [
@@ -644,21 +777,55 @@ function createSessionCard(session) {
     return card;
 }
 
-// Create new session
-async function createNewSession() {
-    // Ask for city selection
-    let cityOptions = availableCities.map((city, index) => `${index + 1}. ${city}`).join('\n');
-    let cityChoice = prompt(`Select a city:\n\n${cityOptions}\n\nEnter number (1-${availableCities.length}):`);
+// Open city selection modal
+function createNewSession() {
+    // Populate city grid
+    const cityGrid = document.getElementById('cityGrid');
+    cityGrid.innerHTML = '';
 
-    if (!cityChoice) return;
+    availableCities.forEach(city => {
+        const card = document.createElement('div');
+        card.className = 'city-card';
+        card.textContent = city;
+        card.onclick = () => selectCity(city, card);
+        cityGrid.appendChild(card);
+    });
 
-    const cityIndex = parseInt(cityChoice) - 1;
-    if (cityIndex < 0 || cityIndex >= availableCities.length) {
-        alert('Invalid choice');
-        return;
-    }
+    // Reset selection
+    selectedCity = null;
+    document.getElementById('cityConfirmBtn').disabled = true;
 
-    const selectedCity = availableCities[cityIndex];
+    // Show modal
+    document.getElementById('cityModal').classList.add('active');
+}
+
+// Select a city
+function selectCity(city, cardElement) {
+    // Remove previous selection
+    document.querySelectorAll('.city-card').forEach(card => {
+        card.classList.remove('selected');
+    });
+
+    // Mark this card as selected
+    cardElement.classList.add('selected');
+    selectedCity = city;
+
+    // Enable continue button
+    document.getElementById('cityConfirmBtn').disabled = false;
+}
+
+// Close city modal
+function closeCityModal() {
+    document.getElementById('cityModal').classList.remove('active');
+    selectedCity = null;
+}
+
+// Confirm city selection and continue to session creation
+async function confirmCitySelection() {
+    if (!selectedCity) return;
+
+    // Close city modal
+    document.getElementById('cityModal').classList.remove('active');
 
     // Ask for session name and player name
     const sessionName = prompt('Enter session name:');
