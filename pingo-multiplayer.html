@@ -966,7 +966,15 @@
         }
 
         async function shuffleBoard() {
-            createBoard();
+            // Use a truly random shuffle so the board actually changes each time
+            const regularImages = images.slice(0, 24).filter(img => img !== null);
+            const shuffled = randomShuffle(regularImages);
+            board = [
+                ...shuffled.slice(0, 12),
+                images[24],
+                ...shuffled.slice(12)
+            ];
+
             // Re-sync marks from Firebase after shuffle
             const snapshot = await db.ref(`sessions/${sessionCode}/markedImages`).once('value');
             const markedImages = snapshot.val() || {};
@@ -981,6 +989,15 @@
 
             renderBoard();
             addMessage('You shuffled your board', 'info');
+        }
+
+        function randomShuffle(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
         }
 
         async function resetBoard() {
