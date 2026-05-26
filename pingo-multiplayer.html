@@ -561,9 +561,15 @@
         <div class="winner-content">
             <h2>🎊 PINGO! 🎊</h2>
             <p id="winnerText">Congratulations! You won!</p>
-            <button class="btn btn-shuffle" onclick="playAgain()">Play Again</button>
-            <button class="btn btn-back" onclick="leaveSession()">Leave Session</button>
+            <p style="font-size:1rem; color:#003087; opacity:0.85;">The game is over. Review your board before leaving!</p>
+            <button class="btn btn-shuffle" onclick="reviewBoard()">👀 Review Board</button>
+            <button class="btn btn-back" onclick="leaveSession()">← Leave Session</button>
         </div>
+    </div>
+
+    <!-- Game Over Banner (shown after reviewing board) -->
+    <div id="gameOverBanner" style="display:none; position:fixed; top:0; left:0; width:100%; background:#FFD700; color:#003087; text-align:center; padding:12px; font-size:1.2rem; font-weight:bold; z-index:999; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+        🏁 Game Over — Session has ended. <button class="btn btn-back" onclick="leaveSession()" style="margin-left:16px; padding:6px 18px; font-size:1rem;">← Leave Session</button>
     </div>
 
     <!-- Help Modal -->
@@ -1138,6 +1144,8 @@
             return false;
         }
 
+        let gameEnded = false;
+
         async function announceWin() {
             try {
                 const winRef = db.ref(`sessions/${sessionCode}/winners`).push({
@@ -1148,8 +1156,9 @@
 
                 await winRef;
 
-                showWinner(`🎊 ${playerName} got PINGO! 🎊`);
-                addMessage(`🎊 ${playerName} won with 3 complete rows!`, 'winner');
+                // Mark session as ended so all players know the game is over
+                await db.ref(`sessions/${sessionCode}/status`).set('ended');
+
             } catch (error) {
                 console.error('Error announcing win:', error);
                 alert('Error announcing win: ' + error.message);
@@ -1161,9 +1170,23 @@
             document.getElementById('winnerModal').classList.add('active');
         }
 
-        function playAgain() {
+        function reviewBoard() {
+            // Close modal so players can review their board (read-only)
             document.getElementById('winnerModal').classList.remove('active');
-            shuffleBoard();
+            document.getElementById('gameOverBanner').style.display = 'block';
+        }
+
+        function endGame(winnerName) {
+            if (gameEnded) return;
+            gameEnded = true;
+            // Disable board interaction
+            document.getElementById('pingoBoard').style.pointerEvents = 'none';
+            document.getElementById('pingoBoard').style.opacity = '0.85';
+            // Hide shuffle/reset controls
+            document.getElementById('shuffleBtn').style.display = 'none';
+            document.getElementById('resetBtn').style.display = 'none';
+            // Show winner modal
+            showWinner(`🎊 ${winnerName} got PINGO! 🎊`);
         }
 
         function listenToSession() {
@@ -1174,6 +1197,7 @@
                 oldRef.child('players').off('value', sessionListeners.playersListener);
                 oldRef.child('winners').off('child_added', sessionListeners.winnersListener);
                 oldRef.child('markedImages').off('value', sessionListeners.markedListener);
+                oldRef.child('status').off('value', sessionListeners.statusListener);
             }
 
             const sessionRef = db.ref(`sessions/${sessionCode}`);
@@ -1183,7 +1207,8 @@
                 code: sessionCode,
                 playersListener: null,
                 winnersListener: null,
-                markedListener: null
+                markedListener: null,
+                statusListener: null
             };
 
             sessionListeners.playersListener = (snapshot) => {
@@ -1206,18 +1231,25 @@
             sessionListeners.winnersListener = (snapshot) => {
                 const winner = snapshot.val();
                 const winnerName = winner.playerName || 'Someone';
-
-                if (winner.userId === userId) {
-                    // You won - show your win modal
-                    showWinner(`🎊 ${winnerName} got PINGO! 🎊`);
-                    addMessage(`🎊 ${winnerName} won with 3 complete rows!`, 'winner');
-                } else {
-                    // Someone else won - show them the winner modal too
-                    showWinner(`🎊 PINGO! 🎊\n${winnerName} won!`);
-                    addMessage(`🎊 ${winnerName} got PINGO! 🎊`, 'winner');
-                }
+                addMessage(`🎊 ${winnerName} got PINGO!`, 'winner');
             };
             sessionRef.child('winners').on('child_added', sessionListeners.winnersListener);
+
+            // Listen for session status to handle game end
+            sessionListeners.statusListener = (snapshot) => {
+                const status = snapshot.val();
+                if (status === 'ended') {
+                    // Fetch the first winner's name to display
+                    db.ref(`sessions/${sessionCode}/winners`).orderByChild('timestamp').limitToFirst(1).once('value', (winSnap) => {
+                        let winnerName = 'Someone';
+                        if (winSnap.exists()) {
+                            winSnap.forEach(child => { winnerName = child.val().playerName || 'Someone'; });
+                        }
+                        endGame(winnerName);
+                    });
+                }
+            };
+            sessionRef.child('status').on('value', sessionListeners.statusListener);
 
             // Listen for marked images from all players
             sessionListeners.markedListener = (snapshot) => {
@@ -1274,6 +1306,7 @@
                 sessionRef.child('players').off('value', sessionListeners.playersListener);
                 sessionRef.child('winners').off('child_added', sessionListeners.winnersListener);
                 sessionRef.child('markedImages').off('value', sessionListeners.markedListener);
+                sessionRef.child('status').off('value', sessionListeners.statusListener);
                 sessionListeners = null;
             }
 
