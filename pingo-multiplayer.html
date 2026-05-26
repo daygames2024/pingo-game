@@ -965,8 +965,10 @@
             renderBoard();
         }
 
-        async function shuffleBoard() {
-            // Use a truly random shuffle so the board actually changes each time
+        function shuffleBoard() {
+            // Shuffle button is only visible before any marks, so no need to re-sync marks.
+            // Avoid any async Firebase calls here — they can cause the persistent markedImages
+            // listener to re-fire mid-shuffle and overwrite the new board order.
             const regularImages = images.slice(0, 24).filter(img => img !== null);
             const shuffled = randomShuffle(regularImages);
             board = [
@@ -974,19 +976,7 @@
                 images[24],
                 ...shuffled.slice(12)
             ];
-
-            // Re-sync marks from Firebase after shuffle
-            const snapshot = await db.ref(`sessions/${sessionCode}/markedImages`).once('value');
-            const markedImages = snapshot.val() || {};
-            const markedPaths = Object.values(markedImages).map(img => img.path);
-
             markedCells.clear();
-            board.forEach((imagePath, index) => {
-                if (markedPaths.includes(imagePath)) {
-                    markedCells.add(index);
-                }
-            });
-
             renderBoard();
             addMessage('You shuffled your board', 'info');
         }
