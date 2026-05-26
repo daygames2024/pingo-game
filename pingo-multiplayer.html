@@ -694,6 +694,24 @@
             console.log('✅ Session saved to localStorage');
         }
 
+        function saveBoardToStorage() {
+            localStorage.setItem('pingo_board_' + sessionCode + '_' + userId, JSON.stringify(board));
+        }
+
+        function loadBoardFromStorage() {
+            const saved = localStorage.getItem('pingo_board_' + sessionCode + '_' + userId);
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch (e) {}
+            }
+            return null;
+        }
+
+        function clearBoardFromStorage() {
+            localStorage.removeItem('pingo_board_' + sessionCode + '_' + userId);
+        }
+
         function loadSessionFromStorage() {
             const saved = localStorage.getItem('pingo_session');
             if (saved) {
@@ -931,7 +949,13 @@
             if (images[0]) {
                 document.getElementById('loadingMessage').style.display = 'none';
                 document.getElementById('pingoBoard').style.display = 'grid';
-                createBoard();
+                const savedBoard = loadBoardFromStorage();
+                if (savedBoard && savedBoard.length === 25) {
+                    board = savedBoard;
+                    renderBoard();
+                } else {
+                    createBoard();
+                }
             } else {
                 document.getElementById('loadingMessage').innerHTML = 
                     `❌ Could not load images for "${cityName}"`;
@@ -955,20 +979,18 @@
         function createBoard() {
             const regularImages = images.slice(0, 24).filter(img => img !== null);
             const shuffled = shuffleArray(regularImages);
-            
+
             board = [
                 ...shuffled.slice(0, 12),
                 images[24],
                 ...shuffled.slice(12)
             ];
 
+            saveBoardToStorage();
             renderBoard();
         }
 
         function shuffleBoard() {
-            // Shuffle button is only visible before any marks, so no need to re-sync marks.
-            // Avoid any async Firebase calls here — they can cause the persistent markedImages
-            // listener to re-fire mid-shuffle and overwrite the new board order.
             const regularImages = images.slice(0, 24).filter(img => img !== null);
             const shuffled = randomShuffle(regularImages);
             board = [
@@ -977,6 +999,7 @@
                 ...shuffled.slice(12)
             ];
             markedCells.clear();
+            saveBoardToStorage();
             renderBoard();
             addMessage('You shuffled your board', 'info');
         }
@@ -1283,6 +1306,7 @@
                 });
 
                 renderBoard();
+                checkForWin();
             };
             sessionRef.child('markedImages').on('value', sessionListeners.markedListener);
 
@@ -1322,7 +1346,8 @@
                 await db.ref(`sessions/${sessionCode}/players/${userId}`).remove();
             }
 
-            // Clear saved session from localStorage
+            // Clear saved session and board from localStorage
+            clearBoardFromStorage();
             clearSessionStorage();
 
             window.location.href = 'index.html';
