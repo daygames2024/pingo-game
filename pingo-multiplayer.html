@@ -1317,9 +1317,9 @@
                 sessionListeners = null;
             }
 
-            // Remove player from session
+            // Mark player as offline (don't remove — keeps session history intact for admin)
             if (sessionCode && userId) {
-                await db.ref(`sessions/${sessionCode}/players/${userId}`).remove();
+                await db.ref(`sessions/${sessionCode}/players/${userId}/online`).set(false);
             }
 
             // Clear saved session and board from localStorage
