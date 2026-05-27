@@ -540,8 +540,6 @@
     </div>
 
     <div class="controls">
-        <button id="shuffleBtn" class="btn btn-shuffle" onclick="shuffleBoard()">🔀 Shuffle My Board</button>
-        <button id="resetBtn" class="btn btn-reset" onclick="resetBoard()">↺ Reset Marks</button>
         <button class="btn btn-help" onclick="showHelp()">❓ HOW TO PLAY</button>
         <button class="btn btn-back" onclick="leaveSession()">← Leave Session</button>
     </div>
@@ -1178,16 +1176,14 @@
 
         async function announceWin() {
             try {
-                const winRef = db.ref(`sessions/${sessionCode}/winners`).push({
+                await db.ref(`sessions/${sessionCode}/winners`).push({
                     userId: userId,
                     playerName: playerName,
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
 
-                await winRef;
-
-                // Mark session as ended so all players know the game is over
-                await db.ref(`sessions/${sessionCode}/status`).set('ended');
+                // Store winner name in status so all clients get it instantly
+                await db.ref(`sessions/${sessionCode}/status`).set('ended:' + playerName);
 
             } catch (error) {
                 console.error('Error announcing win:', error);
@@ -1212,9 +1208,6 @@
             // Disable board interaction
             document.getElementById('pingoBoard').style.pointerEvents = 'none';
             document.getElementById('pingoBoard').style.opacity = '0.85';
-            // Hide shuffle/reset controls
-            document.getElementById('shuffleBtn').style.display = 'none';
-            document.getElementById('resetBtn').style.display = 'none';
             // Show winner modal
             showWinner(`🎊 ${winnerName} got PINGO! 🎊`);
         }
@@ -1268,15 +1261,9 @@
             // Listen for session status to handle game end
             sessionListeners.statusListener = (snapshot) => {
                 const status = snapshot.val();
-                if (status === 'ended') {
-                    // Fetch the first winner's name to display
-                    db.ref(`sessions/${sessionCode}/winners`).orderByChild('timestamp').limitToFirst(1).once('value', (winSnap) => {
-                        let winnerName = 'Someone';
-                        if (winSnap.exists()) {
-                            winSnap.forEach(child => { winnerName = child.val().playerName || 'Someone'; });
-                        }
-                        endGame(winnerName);
-                    });
+                if (status && status.startsWith('ended:')) {
+                    const winnerName = status.slice(6) || 'Someone';
+                    endGame(winnerName);
                 }
             };
             sessionRef.child('status').on('value', sessionListeners.statusListener);
@@ -1285,17 +1272,6 @@
             sessionListeners.markedListener = (snapshot) => {
                 const markedImages = snapshot.val() || {};
                 const markedPaths = Object.values(markedImages).map(img => img.path);
-
-                // Hide shuffle and reset buttons if any marks have been made
-                const shuffleBtn = document.getElementById('shuffleBtn');
-                const resetBtn = document.getElementById('resetBtn');
-                if (Object.keys(markedImages).length > 0) {
-                    shuffleBtn.style.display = 'none';
-                    resetBtn.style.display = 'none';
-                } else {
-                    shuffleBtn.style.display = 'block';
-                    resetBtn.style.display = 'block';
-                }
 
                 // Update local markedCells based on which images are marked
                 markedCells.clear();
