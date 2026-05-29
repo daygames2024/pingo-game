@@ -157,21 +157,32 @@
             border-color: #FFD700;
         }
 
-        .pingo-cell.marked::after {
-            content: '✓';
+        .pingo-cell.marked .mark-overlay {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 215, 0, 0.85);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-size: 4rem;
-            color: #003087;
+            font-size: 2.8rem;
             font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.5);
             animation: markAnimation 0.3s ease-out;
+            pointer-events: none;
+        }
+
+        .pingo-cell.marked .mark-overlay .mark-name {
+            font-size: 0.6rem;
+            font-weight: bold;
+            letter-spacing: 0.04em;
+            margin-top: 2px;
+            text-transform: uppercase;
+            opacity: 0.95;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
         }
 
         .pingo-cell.center {
@@ -469,10 +480,6 @@
                 border-width: 3px;
             }
 
-            .pingo-cell.marked::after {
-                font-size: 2.5rem;
-            }
-
             .winner-content {
                 padding: 30px;
                 margin: 20px;
@@ -537,6 +544,7 @@
     <div class="players-section">
         <div class="players-count" id="playersCount">Players online (0): </div>
         <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 5px;">Share the session code with friends to play together!</div>
+        <div id="playerLegend" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; justify-content:center;"></div>
     </div>
 
     <div class="controls">
@@ -664,6 +672,29 @@
         let board = [];
         let markedCells = new Set();
         let calledImages = new Set();
+        let markedByMap = {};  // imagePath -> { userId, playerName }
+        let playerColorMap = {}; // userId -> colour
+        let playerColorIndex = 0;
+
+        const PLAYER_COLORS = [
+            { bg: 'rgba(220, 53, 69, 0.65)',  label: '#dc3545' },  // red
+            { bg: 'rgba(13, 110, 253, 0.65)', label: '#0d6efd' },  // blue
+            { bg: 'rgba(25, 135, 84, 0.65)',  label: '#198754' },  // green
+            { bg: 'rgba(153, 51, 255, 0.65)', label: '#9933ff' },  // purple
+            { bg: 'rgba(255, 128, 0, 0.65)',  label: '#ff8000' },  // orange
+            { bg: 'rgba(23, 162, 184, 0.65)', label: '#17a2b8' },  // teal
+            { bg: 'rgba(232, 62, 140, 0.65)', label: '#e83e8c' },  // pink
+            { bg: 'rgba(102, 102, 102, 0.65)',label: '#666666' },  // grey
+        ];
+
+        function getPlayerColor(uid) {
+            if (!playerColorMap[uid]) {
+                playerColorMap[uid] = PLAYER_COLORS[playerColorIndex % PLAYER_COLORS.length];
+                playerColorIndex++;
+            }
+            return playerColorMap[uid];
+        }
+
         let sessionListeners = null; // Store listener references for cleanup
 
         function getURLParams() {
@@ -1057,7 +1088,7 @@
                 if (index === 12) {
                     cell.classList.add('center');
                 }
-                
+
                 const img = document.createElement('img');
                 if (imagePath) {
                     img.src = imagePath;
@@ -1068,15 +1099,38 @@
                 } else {
                     img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ddd"/><text x="50" y="50" text-anchor="middle" dy=".3em" fill="%23999">?</text></svg>';
                 }
-                
+
                 cell.appendChild(img);
                 cell.addEventListener('click', () => toggleCell(index));
-                
+
                 if (markedCells.has(index)) {
                     cell.classList.add('marked');
+                    const marker = markedByMap[imagePath];
+                    const color = marker ? getPlayerColor(marker.userId) : PLAYER_COLORS[0];
+                    const name = marker ? (marker.playerName || '').split(' ')[0] : '';
+                    const overlay = document.createElement('div');
+                    overlay.className = 'mark-overlay';
+                    overlay.style.background = color.bg;
+                    overlay.innerHTML = `<span>✓</span><span class="mark-name">${name}</span>`;
+                    cell.appendChild(overlay);
                 }
-                
+
                 boardEl.appendChild(cell);
+            });
+        }
+
+        function updatePlayerLegend() {
+            const legend = document.getElementById('playerLegend');
+            if (!legend) return;
+            legend.innerHTML = '';
+            Object.entries(playerColorMap).forEach(([uid, color]) => {
+                // Find a name for this uid from markedByMap
+                const entry = Object.values(markedByMap).find(m => m.userId === uid);
+                const name = entry ? (entry.playerName || 'Player') : 'Player';
+                const chip = document.createElement('div');
+                chip.style.cssText = `display:flex; align-items:center; gap:5px; background:rgba(255,255,255,0.15); border-radius:20px; padding:4px 10px;`;
+                chip.innerHTML = `<span style="width:14px;height:14px;border-radius:50%;background:${color.label};display:inline-block;flex-shrink:0;"></span><span style="font-size:0.85rem;font-weight:bold;color:white;">${name}</span>`;
+                legend.appendChild(chip);
             });
         }
 
@@ -1110,6 +1164,7 @@
             await db.ref(`sessions/${sessionCode}/markedImages/${encodeImagePath(imagePath)}`).set({
                 path: imagePath,
                 markedBy: userId,
+                playerName: playerName,
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
 
@@ -1271,7 +1326,21 @@
             // Listen for marked images from all players
             sessionListeners.markedListener = (snapshot) => {
                 const markedImages = snapshot.val() || {};
-                const markedPaths = Object.values(markedImages).map(img => img.path);
+
+                // Rebuild markedByMap: imagePath -> { userId, playerName }
+                markedByMap = {};
+                Object.values(markedImages).forEach(img => {
+                    if (img.path) markedByMap[img.path] = { userId: img.markedBy, playerName: img.playerName || '' };
+                });
+
+                // Ensure every marker has a colour assigned (stable order matters)
+                const markedList = Object.values(markedImages).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                markedList.forEach(img => { if (img.markedBy) getPlayerColor(img.markedBy); });
+
+                // Update legend
+                updatePlayerLegend();
+
+                const markedPaths = Object.keys(markedByMap);
 
                 // Update local markedCells based on which images are marked
                 markedCells.clear();
